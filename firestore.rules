@@ -1,0 +1,63 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Fields: uid, email, displayName, photoURL, role, createdAt
+    //
+    // Collection: discoveries
+    // Fields: starId, name, ra, dec, dist, mag, type, discoveredBy, timestamp, notes
+    //
+    // Collection: users/{userId}/logs
+    // Fields: userId, message, type, timestamp
+    //
+    // ===============================================================
+
+    // Helper Functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+         request.auth.token.email == "gabrielrasalles@gmail.com");
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'role']) &&
+             data.uid == request.auth.uid &&
+             data.role in ['admin', 'researcher'];
+    }
+
+    function isValidDiscovery(data) {
+      return data.keys().hasAll(['starId', 'name', 'discoveredBy', 'timestamp']) &&
+             data.discoveredBy == request.auth.uid;
+    }
+
+    // Rules
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isAuthenticated() && isValidUser(request.resource.data) && (request.resource.data.role == 'researcher' || isAdmin());
+      allow update: if isOwner(userId) && isValidUser(request.resource.data) && request.resource.data.role == resource.data.role;
+    }
+
+    match /discoveries/{discoveryId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidDiscovery(request.resource.data);
+      allow update, delete: if isAuthenticated() && (resource.data.discoveredBy == request.auth.uid || isAdmin());
+    }
+
+    match /users/{userId}/logs/{logId} {
+      allow read, write: if isOwner(userId);
+    }
+  }
+}

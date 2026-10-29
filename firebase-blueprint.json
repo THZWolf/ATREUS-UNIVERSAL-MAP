@@ -1,0 +1,62 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "User Profile",
+      "description": "Stores user preferences and authentication data.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Unique user ID from Firebase Auth" },
+        "email": { "type": "string", "format": "email" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string", "format": "uri" },
+        "role": { "type": "string", "enum": ["admin", "researcher"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "StellarDiscovery": {
+      "title": "Stellar Discovery",
+      "description": "Records of stars discovered or favorited by users.",
+      "type": "object",
+      "properties": {
+        "starId": { "type": "string" },
+        "name": { "type": "string" },
+        "ra": { "type": "number" },
+        "dec": { "type": "number" },
+        "dist": { "type": "number" },
+        "mag": { "type": "number" },
+        "type": { "type": "string" },
+        "discoveredBy": { "type": "string", "description": "UID of the user who recorded this" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "notes": { "type": "string" }
+      },
+      "required": ["starId", "name", "discoveredBy", "timestamp"]
+    },
+    "NeuralLog": {
+      "title": "Neural Log",
+      "description": "Persistent logs of AI interactions and system events.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "message": { "type": "string" },
+        "type": { "type": "string", "enum": ["info", "warning", "error", "ai_response"] },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["message", "type", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User profile documents"
+    },
+    "/discoveries/{discoveryId}": {
+      "schema": "StellarDiscovery",
+      "description": "Global stellar discoveries"
+    },
+    "/users/{userId}/logs/{logId}": {
+      "schema": "NeuralLog",
+      "description": "User-specific neural activity logs"
+    }
+  }
+}

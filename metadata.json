@@ -1,0 +1,6 @@
+{
+  "name": "Astraeus-Prime: Neural Mission Control",
+  "description": "A sophisticated multi-psyche AI system (Logos, Pathos, Luna, Astraeus) for stellar mapping, collaborative research, and neural evolution, featuring real-time NASA data integration and voice command support.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": []
+}
