@@ -25,7 +25,8 @@ import {
   X,
   Bookmark,
   BookmarkCheck,
-  Terminal
+  Terminal,
+  Star as StarIcon
 } from 'lucide-react';
 import { StellarMap } from './components/StellarMap';
 import { AIPsyche } from './components/AIPsyche';
@@ -34,8 +35,9 @@ import { TheoreticalArchive } from './components/TheoreticalArchive';
 import { QuantumMetrics } from './components/QuantumMetrics';
 import { BlackzoneDiagnostic } from './components/BlackzoneDiagnostic';
 import { VoiceCommandLog } from './components/VoiceCommandLog';
+import { MyBookmarksPanel } from './components/MyBookmarksPanel';
 import { fetchStellarData } from './services/nasa';
-import { EvolutionMetrics, Star, StellarEvent, EventType, AIMessage, VoiceCommandLogEntry } from './types';
+import { EvolutionMetrics, Star, StellarEvent, EventType, AIMessage, VoiceCommandLogEntry, BookmarkedStar } from './types';
 import { cn } from './lib/utils';
 import { auth, db, handleFirestoreError, OperationType } from './lib/firebase';
 import { getAIResponse } from './services/ai';
@@ -48,7 +50,7 @@ import {
   signOut,
   User as FirebaseUser
 } from 'firebase/auth';
-import { doc, setDoc, getDoc, serverTimestamp, collection, addDoc } from 'firebase/firestore';
+import { doc, setDoc, getDoc, serverTimestamp, collection, addDoc, deleteDoc, getDocs } from 'firebase/firestore';
 
 export default function App() {
   // --- State Management ---
@@ -63,6 +65,65 @@ export default function App() {
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [savedDiscoveries, setSavedDiscoveries] = useState<string[]>([]);
+  const [bookmarkedStars, setBookmarkedStars] = useState<BookmarkedStar[]>(() => {
+    try {
+      const saved = localStorage.getItem('astraeus_star_bookmarks');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    return [
+      {
+        starId: 'proxima-centauri',
+        star: {
+          id: 'proxima-centauri',
+          name: 'Proxima Centauri',
+          ra: 217.42,
+          dec: -62.68,
+          dist: 4.2465,
+          mag: 11.05,
+          type: 'M5.5Ve',
+          metadata: { temp: 3042, mass: 0.122, radius: 0.154 }
+        },
+        bookmarkedAt: Date.now() - 86400000,
+        notes: 'Closest known stellar system to Earth; confirmed exoplanets Proxima b and d.'
+      },
+      {
+        starId: 'sirius-a',
+        star: {
+          id: 'sirius-a',
+          name: 'Sirius A',
+          ra: 101.28,
+          dec: -16.71,
+          dist: 8.611,
+          mag: -1.46,
+          type: 'A1V',
+          metadata: { temp: 9940, mass: 2.063, radius: 1.711 }
+        },
+        bookmarkedAt: Date.now() - 43200000,
+        notes: 'Brightest star in night sky; white dwarf binary companion Sirius B (the Pup).'
+      },
+      {
+        starId: 'vega',
+        star: {
+          id: 'vega',
+          name: 'Vega',
+          ra: 279.23,
+          dec: 38.78,
+          dist: 25.04,
+          mag: 0.03,
+          type: 'A0Va',
+          metadata: { temp: 9602, mass: 2.135, radius: 2.362 }
+        },
+        bookmarkedAt: Date.now() - 18000000,
+        notes: 'Standard astrophysical baseline; rapid rotator with circumstellar debris disc.'
+      }
+    ];
+  });
+
   const [stellarEvents, setStellarEvents] = useState<StellarEvent[]>([]);
   const [activeAlert, setActiveAlert] = useState<StellarEvent | null>(null);
   const [aiMessages, setAiMessages] = useState<AIMessage[]>([]);
@@ -299,6 +360,156 @@ export default function App() {
     }
   };
 
+  // --- Bookmark Management Handlers ---
+  const toggleBookmark = useCallback((star: Star) => {
+    setBookmarkedStars(prev => {
+      const isAlreadyBookmarked = prev.some(b => b.starId === star.id);
+      let updated: BookmarkedStar[];
+      if (isAlreadyBookmarked) {
+        updated = prev.filter(b => b.starId !== star.id);
+        pushAction(`Removed bookmark: ${star.name}`);
+      } else {
+        const newBookmark: BookmarkedStar = {
+          starId: star.id,
+          star,
+          bookmarkedAt: Date.now(),
+          notes: ''
+        };
+        updated = [newBookmark, ...prev];
+        pushAction(`Bookmarked favorite star: ${star.name}`);
+      }
+
+      try {
+        localStorage.setItem('astraeus_star_bookmarks', JSON.stringify(updated));
+      } catch (e) {
+        console.error("Local storage bookmark save error:", e);
+      }
+      return updated;
+    });
+
+    if (user) {
+      try {
+        const isAlreadyBookmarked = bookmarkedStars.some(b => b.starId === star.id);
+        const bookmarkRef = doc(db, 'users', user.uid, 'bookmarks', star.id);
+        if (isAlreadyBookmarked) {
+          deleteDoc(bookmarkRef).catch(err => console.error("Firestore bookmark delete error:", err));
+        } else {
+          setDoc(bookmarkRef, {
+            starId: star.id,
+            name: star.name,
+            ra: star.ra,
+            dec: star.dec,
+            dist: star.dist,
+            mag: star.mag,
+            type: star.type,
+            bookmarkedAt: serverTimestamp()
+          }).catch(err => console.error("Firestore bookmark save error:", err));
+        }
+      } catch (e) {
+        console.error("Firebase bookmark sync error:", e);
+      }
+    }
+  }, [user, bookmarkedStars]);
+
+  const handleRemoveBookmark = useCallback((starId: string) => {
+    setBookmarkedStars(prev => {
+      const item = prev.find(b => b.starId === starId);
+      if (item) pushAction(`Removed bookmark: ${item.star.name}`);
+      const updated = prev.filter(b => b.starId !== starId);
+      try {
+        localStorage.setItem('astraeus_star_bookmarks', JSON.stringify(updated));
+      } catch (e) {
+        console.error("Local storage error:", e);
+      }
+      return updated;
+    });
+
+    if (user) {
+      try {
+        deleteDoc(doc(db, 'users', user.uid, 'bookmarks', starId)).catch(err => console.error(err));
+      } catch (e) {
+        console.error("Firebase bookmark remove error:", e);
+      }
+    }
+  }, [user]);
+
+  const handleUpdateBookmarkNote = useCallback((starId: string, notes: string) => {
+    setBookmarkedStars(prev => {
+      const updated = prev.map(b => b.starId === starId ? { ...b, notes } : b);
+      try {
+        localStorage.setItem('astraeus_star_bookmarks', JSON.stringify(updated));
+      } catch (e) {
+        console.error(e);
+      }
+      return updated;
+    });
+
+    if (user) {
+      try {
+        setDoc(doc(db, 'users', user.uid, 'bookmarks', starId), { notes }, { merge: true }).catch(err => console.error(err));
+      } catch (e) {
+        console.error("Firebase bookmark note update error:", e);
+      }
+    }
+  }, [user]);
+
+  const handleClearAllBookmarks = useCallback(() => {
+    setBookmarkedStars([]);
+    try {
+      localStorage.removeItem('astraeus_star_bookmarks');
+    } catch (e) {
+      console.error(e);
+    }
+    pushAction("Cleared all bookmarked stars");
+  }, []);
+
+  const handleAddSampleStars = useCallback(() => {
+    const samples: BookmarkedStar[] = [
+      {
+        starId: 'proxima-centauri',
+        star: { id: 'proxima-centauri', name: 'Proxima Centauri', ra: 217.42, dec: -62.68, dist: 4.2465, mag: 11.05, type: 'M5.5Ve' },
+        bookmarkedAt: Date.now(),
+        notes: 'Closest known stellar system to Earth'
+      },
+      {
+        starId: 'sirius-a',
+        star: { id: 'sirius-a', name: 'Sirius A', ra: 101.28, dec: -16.71, dist: 8.611, mag: -1.46, type: 'A1V' },
+        bookmarkedAt: Date.now() - 1000,
+        notes: 'Brightest night star, binary companion Sirius B'
+      },
+      {
+        starId: 'vega',
+        star: { id: 'vega', name: 'Vega', ra: 279.23, dec: 38.78, dist: 25.04, mag: 0.03, type: 'A0Va' },
+        bookmarkedAt: Date.now() - 2000,
+        notes: 'Astrophysical baseline; rapid rotator'
+      },
+      {
+        starId: 'betelgeuse',
+        star: { id: 'betelgeuse', name: 'Betelgeuse', ra: 88.79, dec: 7.41, dist: 642.5, mag: 0.50, type: 'M1-M2Ia' },
+        bookmarkedAt: Date.now() - 3000,
+        notes: 'Red supergiant in Orion; candidate supernova'
+      }
+    ];
+    setBookmarkedStars(samples);
+    try {
+      localStorage.setItem('astraeus_star_bookmarks', JSON.stringify(samples));
+    } catch (e) {
+      console.error(e);
+    }
+    pushAction("Added featured sample stars to bookmarks");
+  }, []);
+
+  const handleNavigateToBookmarkedStar = useCallback((star: Star) => {
+    setSelectedStar(star);
+    setActiveTab('map');
+    pushAction(`Neural lock-on: ${star.name} coordinates loaded`);
+    setEvolution(prev => ({
+      ...prev,
+      totalInteractions: prev.totalInteractions + 1,
+      sentienceIndex: Math.min(100, prev.sentienceIndex + 0.1)
+    }));
+  }, []);
+
   // Re-trigger a recognized voice command from the log
   const handleRetriggerCommand = useCallback((commandText: string) => {
     pushAction(`Re-triggering voice command: "${commandText}"`);
@@ -312,6 +523,8 @@ export default function App() {
       },
       onSwitchPsyche: (face) => setAiPsycheFace(face),
       onSaveDiscovery: () => handleSaveDiscovery(),
+      onToggleBookmark: () => selectedStar && toggleBookmark(selectedStar),
+      onOpenBookmarks: () => setIsSubComputerOpen(true),
       onSpeak: (text, face) => speakText(text, face),
       onPostAssistantMessage: (msg) => setAiMessages(prev => [...prev, msg]),
       onLogCommand: (entry) => {
@@ -447,6 +660,41 @@ export default function App() {
             createdAt: serverTimestamp()
           });
         }
+
+        // Fetch user bookmarks from Firestore
+        try {
+          const bSnap = await getDocs(collection(db, 'users', firebaseUser.uid, 'bookmarks'));
+          if (!bSnap.empty) {
+            const remoteBookmarks: BookmarkedStar[] = [];
+            bSnap.forEach(docSnap => {
+              const data = docSnap.data();
+              remoteBookmarks.push({
+                starId: data.starId || docSnap.id,
+                star: {
+                  id: data.starId || docSnap.id,
+                  name: data.name,
+                  ra: data.ra,
+                  dec: data.dec,
+                  dist: data.dist,
+                  mag: data.mag,
+                  type: data.type
+                },
+                bookmarkedAt: data.bookmarkedAt?.toMillis?.() || Date.now(),
+                notes: data.notes || ''
+              });
+            });
+            if (remoteBookmarks.length > 0) {
+              setBookmarkedStars(remoteBookmarks);
+              try {
+                localStorage.setItem('astraeus_star_bookmarks', JSON.stringify(remoteBookmarks));
+              } catch (e) {
+                console.error(e);
+              }
+            }
+          }
+        } catch (e) {
+          console.error("Firestore bookmarks fetch error:", e);
+        }
       }
     });
 
@@ -567,6 +815,18 @@ export default function App() {
                 <FlaskConical size={18} />
                 <span className="text-xs font-mono uppercase tracking-widest">Research Lab</span>
               </button>
+              <button 
+                onClick={() => { setIsSubComputerOpen(true); pushAction("Opened My Bookmarks in Sub-Computer"); setIsMobileMenuOpen(false); }}
+                className="w-full flex items-center justify-between p-3 rounded-sm border border-accent-gold/30 bg-accent-gold/5 text-accent-gold hover:bg-accent-gold/15 transition-all group"
+              >
+                <div className="flex items-center gap-3">
+                  <BookmarkCheck size={18} className="group-hover:scale-110 transition-transform" />
+                  <span className="text-xs font-mono uppercase tracking-widest font-bold">My Bookmarks</span>
+                </div>
+                <span className="px-1.5 py-0.5 bg-accent-gold/20 text-accent-gold rounded-xs text-[9px] font-mono font-bold">
+                  {bookmarkedStars.length}
+                </span>
+              </button>
             </nav>
 
             <div className="h-[1px] bg-border" />
@@ -608,7 +868,10 @@ export default function App() {
                     stars={stars} 
                     events={stellarEvents} 
                     selectedStar={selectedStar} 
+                    bookmarkedStarIds={bookmarkedStars.map(b => b.starId)}
                     onStarSelect={selectStar} 
+                    onToggleBookmark={toggleBookmark}
+                    onOpenBookmarks={() => setIsSubComputerOpen(true)}
                     searchKeywords={searchKeywords}
                   />
                   
@@ -716,20 +979,50 @@ export default function App() {
                             <div className="data-row-themed"><span>Distance</span><span className="data-val-themed">{selectedStar.dist.toFixed(3)} LY</span></div>
                             <div className="data-row-themed"><span>Magnitude</span><span className="data-val-themed">{selectedStar.mag.toFixed(2)}</span></div>
                             <div className="data-row-themed"><span>Coordinates</span><span className="data-val-themed">{selectedStar.ra.toFixed(2)}h / {selectedStar.dec.toFixed(2)}°</span></div>
+                            <div className="data-row-themed"><span>Spectral Class</span><span className="data-val-themed text-accent-cyan">{selectedStar.type}</span></div>
                           </div>
-                          <button 
-                            onClick={handleSaveDiscovery}
-                            disabled={!user || savedDiscoveries.includes(selectedStar.id) || isSaving}
-                            className={cn(
-                              "w-full mt-4 py-2 rounded-sm border flex items-center justify-center gap-2 text-[10px] font-mono uppercase tracking-widest transition-all",
-                              savedDiscoveries.includes(selectedStar.id) 
-                                ? "border-green-500/50 bg-green-500/10 text-green-400"
-                                : "border-accent-cyan/30 bg-accent-cyan/5 text-accent-cyan hover:bg-accent-cyan/20 disabled:opacity-30"
+
+                          <div className="space-y-2 mt-4">
+                            {/* Bookmark Star Button */}
+                            <button 
+                              onClick={() => toggleBookmark(selectedStar)}
+                              className={cn(
+                                "w-full py-2 rounded-sm border flex items-center justify-center gap-2 text-[10px] font-mono uppercase tracking-widest transition-all",
+                                bookmarkedStars.some(b => b.starId === selectedStar.id)
+                                  ? "border-accent-gold/70 bg-accent-gold/20 text-accent-gold shadow-[0_0_15px_rgba(251,176,59,0.25)] font-bold"
+                                  : "border-border hover:border-accent-gold/50 bg-surface text-text-dim hover:text-accent-gold"
+                              )}
+                              title={bookmarkedStars.some(b => b.starId === selectedStar.id) ? "Remove star from bookmarks" : "Save star to favorite bookmarks"}
+                            >
+                              <StarIcon size={12} className={bookmarkedStars.some(b => b.starId === selectedStar.id) ? "fill-accent-gold text-accent-gold" : ""} />
+                              <span>{bookmarkedStars.some(b => b.starId === selectedStar.id) ? "★ Bookmarked (Favorite)" : "Bookmark Star"}</span>
+                            </button>
+
+                            {/* Cloud Discovery Archive Button */}
+                            <button 
+                              onClick={handleSaveDiscovery}
+                              disabled={!user || savedDiscoveries.includes(selectedStar.id) || isSaving}
+                              className={cn(
+                                "w-full py-2 rounded-sm border flex items-center justify-center gap-2 text-[10px] font-mono uppercase tracking-widest transition-all",
+                                savedDiscoveries.includes(selectedStar.id) 
+                                  ? "border-green-500/50 bg-green-500/10 text-green-400"
+                                  : "border-accent-cyan/30 bg-accent-cyan/5 text-accent-cyan hover:bg-accent-cyan/20 disabled:opacity-30"
+                              )}
+                            >
+                              {isSaving ? <Binary size={12} className="animate-spin" /> : savedDiscoveries.includes(selectedStar.id) ? <BookmarkCheck size={12} /> : <Bookmark size={12} />}
+                              <span>{savedDiscoveries.includes(selectedStar.id) ? "Recorded in Cloud" : "Save Discovery"}</span>
+                            </button>
+
+                            {bookmarkedStars.some(b => b.starId === selectedStar.id) && (
+                              <button
+                                onClick={() => setIsSubComputerOpen(true)}
+                                className="text-[9px] font-mono text-accent-gold/80 hover:text-accent-gold text-center py-1 flex items-center justify-center gap-1 transition-colors w-full"
+                              >
+                                <span>Inspect in My Bookmarks panel</span>
+                                <ChevronRight size={11} />
+                              </button>
                             )}
-                          >
-                            {isSaving ? <Binary size={12} className="animate-spin" /> : savedDiscoveries.includes(selectedStar.id) ? <BookmarkCheck size={12} /> : <Bookmark size={12} />}
-                            <span>{savedDiscoveries.includes(selectedStar.id) ? "Recorded" : "Save Discovery"}</span>
-                          </button>
+                          </div>
                         </div>
                       </motion.div>
                     )}
@@ -1002,6 +1295,8 @@ export default function App() {
                   handleResearchWithQuery(query);
                 }}
                 onSaveDiscovery={handleSaveDiscovery}
+                onToggleBookmark={() => selectedStar && toggleBookmark(selectedStar)}
+                onOpenBookmarks={() => setIsSubComputerOpen(true)}
                 onLogVoiceCommand={logVoiceCommand}
                 activeFace={aiPsycheFace}
                 onFaceChange={setAiPsycheFace}
@@ -1035,7 +1330,27 @@ export default function App() {
               <button onClick={() => setIsSubComputerOpen(false)}><X size={18} className="text-text-dim hover:text-text-main" /></button>
             </div>
 
-            <div className="flex-1 space-y-8 overflow-y-auto pr-2 scrollbar-hide">
+            <div className="flex-1 space-y-6 overflow-y-auto pr-2 scrollbar-hide">
+              {/* My Bookmarked Stars Section */}
+              <section className="bg-bg/80 p-3.5 rounded-sm border border-accent-gold/40 shadow-inner">
+                <MyBookmarksPanel 
+                  bookmarks={bookmarkedStars}
+                  selectedStar={selectedStar}
+                  onNavigateToStar={handleNavigateToBookmarkedStar}
+                  onRemoveBookmark={handleRemoveBookmark}
+                  onUpdateBookmarkNote={handleUpdateBookmarkNote}
+                  onClearAllBookmarks={handleClearAllBookmarks}
+                  onAddSampleStars={handleAddSampleStars}
+                  onStartResearch={(query) => {
+                    setActiveTab('research');
+                    setResearchQuery(query);
+                    handleResearchWithQuery(query);
+                    setIsSubComputerOpen(false);
+                  }}
+                  onClose={() => setIsSubComputerOpen(false)}
+                />
+              </section>
+
               <EvolutionDisplay metrics={evolution} />
               <TheoreticalArchive />
               

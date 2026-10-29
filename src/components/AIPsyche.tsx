@@ -30,6 +30,8 @@ interface Props {
   onToggleSubComputer?: () => void;
   onStartResearch?: (query: string) => void;
   onSaveDiscovery?: () => void;
+  onToggleBookmark?: () => void;
+  onOpenBookmarks?: () => void;
   onLogVoiceCommand?: (entry: Omit<VoiceCommandLogEntry, 'id' | 'timestamp'>) => void;
   activeFace?: 'logos' | 'pathos' | 'luna' | 'astraeus' | 'sophia' | 'mnemosyne';
   onFaceChange?: (face: 'logos' | 'pathos' | 'luna' | 'astraeus' | 'sophia' | 'mnemosyne') => void;
@@ -47,10 +49,13 @@ export const AIPsyche: React.FC<Props> = ({
   onToggleSubComputer,
   onStartResearch,
   onSaveDiscovery,
+  onToggleBookmark,
+  onOpenBookmarks,
   onLogVoiceCommand,
   activeFace: propActiveFace,
   onFaceChange
 }) => {
+
   const [input, setInput] = useState('');
   const [internalFace, setInternalFace] = useState<'logos' | 'pathos' | 'luna' | 'astraeus' | 'sophia' | 'mnemosyne'>('logos');
   const face = propActiveFace || internalFace;
@@ -121,11 +126,14 @@ export const AIPsyche: React.FC<Props> = ({
           onStartResearch: (query) => onStartResearch?.(query),
           onSwitchPsyche: (f) => setFace(f),
           onSaveDiscovery: () => onSaveDiscovery?.(),
+          onToggleBookmark: () => onToggleBookmark?.(),
+          onOpenBookmarks: () => onOpenBookmarks?.(),
           onSpeak: (text, f) => speak(text, f || face),
           onPostAssistantMessage: (msg) => onMessagesChange(prev => [...prev, msg]),
           onLogCommand: (entry) => onLogVoiceCommand?.(entry),
           currentFace: face
         });
+
 
         if (!handled) {
           handleSend(transcript);

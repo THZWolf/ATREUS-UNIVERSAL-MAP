@@ -59,5 +59,14 @@ service cloud.firestore {
     match /users/{userId}/logs/{logId} {
       allow read, write: if isOwner(userId);
     }
+
+    match /users/{userId}/bookmarks/{bookmarkId} {
+      allow read, write: if isOwner(userId);
+    }
+
+    match /users/{userId}/research/{researchId} {
+      allow read, write: if isOwner(userId);
+    }
   }
 }
+

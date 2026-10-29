@@ -81,3 +81,12 @@ export interface StellarComparisonData {
   deltaDistanceLY: number;
   deltaMagnitude: number;
 }
+
+export interface BookmarkedStar {
+  starId: string;
+  star: Star;
+  bookmarkedAt: number;
+  notes?: string;
+  tags?: string[];
+}
+

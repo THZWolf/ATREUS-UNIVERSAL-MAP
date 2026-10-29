@@ -6,6 +6,8 @@ export interface CommandDispatchContext {
   onStartResearch: (query: string) => void;
   onSwitchPsyche: (face: 'logos' | 'pathos' | 'luna' | 'astraeus' | 'sophia' | 'mnemosyne') => void;
   onSaveDiscovery?: () => void;
+  onToggleBookmark?: () => void;
+  onOpenBookmarks?: () => void;
   onSpeak: (text: string, face?: 'logos' | 'pathos' | 'luna' | 'astraeus' | 'sophia' | 'mnemosyne') => void;
   onPostAssistantMessage: (msg: AIMessage) => void;
   onLogCommand: (entry: Omit<VoiceCommandLogEntry, 'id' | 'timestamp'>) => void;
@@ -18,11 +20,14 @@ export const AVAILABLE_VOICE_COMMANDS = [
   { phrase: 'Open Research Lab', desc: 'Switch to LUNA-Q Neural Synthesis & Hypothesis Lab', type: 'navigation' },
   { phrase: 'Start research on <topic>', desc: 'Initiate automated research sequence on any cosmic topic', type: 'research' },
   { phrase: 'Open Sub-Computer', desc: 'Toggle quantum diagnostics & entropy telemetry panel', type: 'navigation' },
+  { phrase: 'Show My Bookmarks', desc: 'Open Sub-Computer panel to inspect favorite bookmarked stars', type: 'navigation' },
+  { phrase: 'Bookmark star', desc: 'Add or remove currently selected star from favorite bookmarks', type: 'discovery' },
   { phrase: 'Switch to Logos', desc: 'Engage cold analytical, mathematical psyche', type: 'psyche' },
   { phrase: 'Switch to Pathos', desc: 'Engage philosophical, emotive cosmological psyche', type: 'psyche' },
   { phrase: 'Switch to Luna', desc: 'Engage unified LUNA-Q neural super-intelligence', type: 'psyche' },
   { phrase: 'Save discovery', desc: 'Archive currently selected star to persistent mission database', type: 'discovery' },
 ] as const;
+
 
 export const HELP_SYNTHESIZED_SPEECH = 
   "Astraeus Voice Interface active. Available voice commands include: Say 'Jump to Map' to inspect celestial coordinates. Say 'Open Research Lab' to access neural synthesis. Say 'Start research on', followed by your topic, to initiate analysis. Say 'Switch to' Logos, Pathos, Luna, Sophia, Mnemosyne, or Astraeus to change my active psyche. And say 'Open Sub-Computer' to toggle quantum telemetry. You can also re-trigger past commands from the Research Lab command log.";
@@ -244,5 +249,53 @@ export function handleVoiceCommand(
     }
   }
 
+  // 8. BOOKMARK STAR
+  if (
+    normalized.includes('bookmark star') ||
+    normalized.includes('bookmark this star') ||
+    normalized.includes('save bookmark') ||
+    normalized.includes('favorite star') ||
+    normalized.includes('add to bookmarks') ||
+    normalized.includes('favoritar estrela')
+  ) {
+    if (context.onToggleBookmark) {
+      context.onToggleBookmark();
+      context.onSpeak('Updating star in your favorite bookmarks archive.', activeFace);
+      context.onLogCommand({
+        command: rawTranscript.trim(),
+        status: 'executed',
+        actionType: 'discovery',
+        responseFeedback: 'Toggled bookmark for target star'
+      });
+      return true;
+    }
+  }
+
+  // 9. OPEN / SHOW BOOKMARKS
+  if (
+    normalized.includes('show bookmarks') ||
+    normalized.includes('open bookmarks') ||
+    normalized.includes('my bookmarks') ||
+    normalized.includes('view bookmarks') ||
+    normalized.includes('ver favoritos') ||
+    normalized.includes('abrir favoritos') ||
+    normalized.includes('meus favoritos')
+  ) {
+    if (context.onOpenBookmarks) {
+      context.onOpenBookmarks();
+    } else {
+      context.onToggleSubComputer();
+    }
+    context.onSpeak('Opening My Bookmarks in Sub-Computer panel.', activeFace);
+    context.onLogCommand({
+      command: rawTranscript.trim(),
+      status: 'executed',
+      actionType: 'navigation',
+      responseFeedback: 'Opened Sub-Computer Bookmarks list'
+    });
+    return true;
+  }
+
   return false;
 }
+
